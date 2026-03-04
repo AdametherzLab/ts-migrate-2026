@@ -1,0 +1,50 @@
+{
+  "name": "@adametherzlab/ts-migrate-2026",
+  "version": "0.1.0",
+  "description": "CLI to automatically fix TypeScript breaking changes for TS 6.0/7.0 migrations.",
+  "type": "module",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "bun test",
+    "build": "bun build src/index.ts --outdir dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.5.0"
+  },
+  "keywords": [
+    "typescript",
+    "bun",
+    "typescript",
+    "bun",
+    "typescript",
+    "developer-tools",
+    "cli",
+    "automation",
+    "migration"
+  ],
+  "author": "AdametherzLab",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AdametherzLab/ts-migrate-2026.git"
+  },
+  "homepage": "https://github.com/AdametherzLab/ts-migrate-2026#readme",
+  "bugs": {
+    "url": "https://github.com/AdametherzLab/ts-migrate-2026/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false
+}
