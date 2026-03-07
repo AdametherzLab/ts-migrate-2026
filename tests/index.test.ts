@@ -39,6 +39,20 @@ describe("CLI Argument Parsing", () => {
     const result = validateConfig(parsed);
     expect(result.logLevel).toBe("info");
   });
+
+  it("should parse --target-ts-version with valid value", () => {
+    const args = ["node", "script.js", "--target-ts-version", "5.0"];
+    const parsed = parseArgs(args);
+    const result = validateConfig(parsed);
+    expect(result.targetTsVersion).toBe("5.0");
+  });
+
+  it("should ignore invalid --target-ts-version values", () => {
+    const args = ["node", "script.js", "--target-ts-version", "4.9"];
+    const parsed = parseArgs(args);
+    const result = validateConfig(parsed);
+    expect(result.targetTsVersion).toBe("6.0");
+  });
 });
 
 describe("Configuration Validation", () => {
@@ -84,7 +98,7 @@ describe("TypeScript Config Utilities", () => {
         moduleResolution: "classic",
       },
     };
-    expect(() => validateTsConfig(config)).toThrow();
+    expect(() => validateTsConfig(config, "6.0")).toThrow();
   });
 
   it("should generate diff between old and new content", () => {

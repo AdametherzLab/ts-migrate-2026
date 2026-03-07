@@ -3,6 +3,8 @@ import * as os from "os";
 
 export type LogLevel = "info" | "warn" | "error" | "debug";
 
+export type TargetTsVersion = "5.0" | "5.1" | "5.2" | "5.3" | "5.4" | "5.5" | "6.0" | "7.0";
+
 export interface MigrationIssue {
   readonly filePath: string;
   readonly line: number;
@@ -29,7 +31,7 @@ export interface Config {
   readonly dataDir: string;
   readonly dryRun: boolean;
   readonly logLevel: LogLevel;
-  readonly targetTsVersion: "6.0" | "7.0";
+  readonly targetTsVersion: TargetTsVersion;
 }
 
 export interface TsConfigJson {

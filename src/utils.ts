@@ -1,7 +1,7 @@
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
-import { Config, TsConfigJson, MigrationIssue, CodemodAction, getDefaultDataDir, MigrationError } from "./types";
+import { Config, TsConfigJson, MigrationIssue, CodemodAction, getDefaultDataDir, MigrationError, TargetTsVersion } from "./types";
 
 export function parseConfig(configPath: string): Config {
   try {
@@ -47,17 +47,26 @@ export function createCodemodAction(
   return { filePath, description, oldContent, newContent };
 }
 
-export function validateTsConfig(config: TsConfigJson): void {
+export function validateTsConfig(config: TsConfigJson, targetTsVersion: TargetTsVersion): void {
   if (!config.compilerOptions) return;
   const { target, module, baseUrl, moduleResolution } = config.compilerOptions;
-  if (target === "ES5") {
-    throw new MigrationError("ES5 target is deprecated in TS 6.0+");
+
+  // Rules for TS 6.0+
+  if (targetTsVersion >= "6.0") {
+    if (target === "ES5") {
+      throw new MigrationError("ES5 target is deprecated in TS 6.0+");
+    }
+    if (module === "commonjs" && moduleResolution === "classic") {
+      throw new MigrationError("Classic module resolution is deprecated in TS 6.0+");
+    }
+    if (baseUrl) {
+      throw new MigrationError("baseUrl is deprecated in TS 6.0+");
+    }
   }
-  if (module === "commonjs" && moduleResolution === "classic") {
-    throw new MigrationError("Classic module resolution is deprecated in TS 6.0+");
-  }
-  if (baseUrl) {
-    throw new MigrationError("baseUrl is deprecated in TS 6.0+");
+
+  // Rules for TS 7.0+ (example, extend as needed)
+  if (targetTsVersion >= "7.0") {
+    // Add TS 7.0 specific validations here
   }
 }
 

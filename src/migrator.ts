@@ -102,45 +102,63 @@ export class Migrator {
     }
 
     const config = this.parseTsConfig(content);
+    const targetVersion = this.config.targetTsVersion;
 
-    if (config.compilerOptions?.baseUrl) {
-      issues.push({
-        filePath,
-        line: 1,
-        column: 1,
-        code: "TS6001",
-        message: "baseUrl is deprecated in TypeScript 6.0+",
-        severity: "warning",
-      });
+    if (targetVersion >= "6.0") {
+      if (config.compilerOptions?.baseUrl) {
+        issues.push({
+          filePath,
+          line: 1,
+          column: 1,
+          code: "TS6001",
+          message: "baseUrl is deprecated in TypeScript 6.0+",
+          severity: "warning",
+        });
+      }
+
+      if (config.compilerOptions?.target === "ES5") {
+        issues.push({
+          filePath,
+          line: 1,
+          column: 1,
+          code: "TS6002",
+          message: "ES5 target is deprecated in TypeScript 6.0+",
+          severity: "warning",
+        });
+      }
+
+      if (config.compilerOptions?.moduleResolution === "classic") {
+        issues.push({
+          filePath,
+          line: 1,
+          column: 1,
+          code: "TS6003",
+          message: "classic module resolution is deprecated in TypeScript 6.0+",
+          severity: "warning",
+        });
+      }
     }
 
-    if (config.compilerOptions?.target === "ES5") {
-      issues.push({
-        filePath,
-        line: 1,
-        column: 1,
-        code: "TS6002",
-        message: "ES5 target is deprecated in TypeScript 6.0+",
-        severity: "warning",
-      });
-    }
-
-    if (config.compilerOptions?.moduleResolution === "classic") {
-      issues.push({
-        filePath,
-        line: 1,
-        column: 1,
-        code: "TS6003",
-        message: "classic module resolution is deprecated in TypeScript 6.0+",
-        severity: "warning",
-      });
+    // Add checks for other target versions here
+    if (targetVersion >= "5.0" && targetVersion < "6.0") {
+      // Example: If 'strict' is not enabled in TS 5.0-5.x, warn
+      if (config.compilerOptions && config.compilerOptions.target && parseFloat(config.compilerOptions.target) < 5.0) {
+        issues.push({
+          filePath,
+          line: 1,
+          column: 1,
+          code: "TS5001",
+          message: `Target TypeScript version is ${targetVersion}, but tsconfig.json target is ${config.compilerOptions.target}. Consider upgrading.`, 
+          severity: "warning",
+        });
+      }
     }
   }
 
   private checkDeprecatedPatterns(sourceFile: ts.SourceFile, issues: MigrationIssue[]): void {
     const checkNode = (node: ts.Node): void => {
       if (ts.isImportDeclaration(node)) {
-        const specifier = node.moduleSpecifier.getText().replace(/['"`]/g, ''); // Handle template literals too
+        const specifier = node.moduleSpecifier.getText().replace(/['`"]/g, ''); // Handle template literals too
         // Basic check for direct node_modules imports, could be more sophisticated
         if (specifier.startsWith("../node_modules/") || specifier.startsWith("./node_modules/")) {
           const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
@@ -200,28 +218,28 @@ export class Migrator {
   }
 
   private fixTarget(filePath: string, oldContent: string, config: MutableTsConfigJson): CodemodAction | null {
-    if (config.compilerOptions?.target !== "ES5") return null;
+    if (this.config.targetTsVersion < "6.0" || config.compilerOptions?.target !== "ES5") return null;
 
-    const newConfig = { ...config, compilerOptions: { ...config.compilerOptions, target: "ES2020" } };
+    const newConfig = { ...config, compilerOptions: { ...config.compilerOptions, target: "ES2015" } };
     const newContent = JSON.stringify(newConfig, null, 2);
 
     return {
       filePath,
-      description: "Update target from ES5 to ES2020",
+      description: `Upgrade target from ES5 to ES2015 for TS ${this.config.targetTsVersion}+`,
       oldContent,
       newContent,
     };
   }
 
   private fixModuleResolution(filePath: string, oldContent: string, config: MutableTsConfigJson): CodemodAction | null {
-    if (config.compilerOptions?.moduleResolution !== "classic") return null;
+    if (this.config.targetTsVersion < "6.0" || config.compilerOptions?.moduleResolution !== "classic") return null;
 
     const newConfig = { ...config, compilerOptions: { ...config.compilerOptions, moduleResolution: "node" } };
     const newContent = JSON.stringify(newConfig, null, 2);
 
     return {
       filePath,
-      description: "Update moduleResolution from classic to node",
+      description: `Upgrade moduleResolution from classic to node for TS ${this.config.targetTsVersion}+`,
       oldContent,
       newContent,
     };
@@ -231,10 +249,7 @@ export class Migrator {
     try {
       return JSON.parse(content) as MutableTsConfigJson;
     } catch (error) {
-      // If parsing fails, return an empty object to prevent further errors
-      // The checkTsConfig method will handle the missing properties gracefully
-      console.warn("Failed to parse tsconfig.json content, returning empty config.", error);
-      return {};
+      throw new MigrationError("Failed to parse tsconfig.json content", { cause: error });
     }
   }
 }

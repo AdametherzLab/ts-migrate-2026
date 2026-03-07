@@ -5,6 +5,7 @@ import type {
   CodemodAction,
   MigrationIssue,
   TsConfigJson,
+  TargetTsVersion,
 } from "./types";
 
 export {
@@ -36,4 +37,5 @@ export type {
   CodemodAction,
   MigrationIssue,
   TsConfigJson,
+  TargetTsVersion,
 };
