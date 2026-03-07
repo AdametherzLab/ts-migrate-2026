@@ -1,17 +1,21 @@
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
-import { Config, TsConfigJson, MigrationIssue, CodemodAction, getDefaultDataDir } from "./types";
+import { Config, TsConfigJson, MigrationIssue, CodemodAction, getDefaultDataDir, MigrationError } from "./types";
 
 export function parseConfig(configPath: string): Config {
-  const raw = fs.readFileSync(configPath, "utf-8");
-  const parsed = JSON.parse(raw) as Partial<Config>;
-  return {
-    dataDir: parsed.dataDir ?? getDefaultDataDir(),
-    dryRun: parsed.dryRun ?? true,
-    logLevel: parsed.logLevel ?? "info",
-    targetTsVersion: parsed.targetTsVersion ?? "6.0",
-  };
+  try {
+    const raw = fs.readFileSync(configPath, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<Config>;
+    return {
+      dataDir: parsed.dataDir ?? getDefaultDataDir(),
+      dryRun: parsed.dryRun ?? true,
+      logLevel: parsed.logLevel ?? "info",
+      targetTsVersion: parsed.targetTsVersion ?? "6.0",
+    };
+  } catch (error) {
+    throw new MigrationError(`Failed to parse config file at ${configPath}`, { cause: error });
+  }
 }
 
 export function generateDiff(oldContent: string, newContent: string): string {
@@ -47,23 +51,31 @@ export function validateTsConfig(config: TsConfigJson): void {
   if (!config.compilerOptions) return;
   const { target, module, baseUrl, moduleResolution } = config.compilerOptions;
   if (target === "ES5") {
-    throw new Error("ES5 target is deprecated in TS 6.0+");
+    throw new MigrationError("ES5 target is deprecated in TS 6.0+");
   }
   if (module === "commonjs" && moduleResolution === "classic") {
-    throw new Error("Classic module resolution is deprecated in TS 6.0+");
+    throw new MigrationError("Classic module resolution is deprecated in TS 6.0+");
   }
   if (baseUrl) {
-    throw new Error("baseUrl is deprecated in TS 6.0+");
+    throw new MigrationError("baseUrl is deprecated in TS 6.0+");
   }
 }
 
 export function readTsConfig(tsconfigPath: string): TsConfigJson {
-  const raw = fs.readFileSync(tsconfigPath, "utf-8");
-  return JSON.parse(raw) as TsConfigJson;
+  try {
+    const raw = fs.readFileSync(tsconfigPath, "utf-8");
+    return JSON.parse(raw) as TsConfigJson;
+  } catch (error) {
+    throw new MigrationError(`Failed to read or parse tsconfig.json at ${tsconfigPath}`, { cause: error });
+  }
 }
 
 export function writeTsConfig(tsconfigPath: string, config: TsConfigJson): void {
-  fs.writeFileSync(tsconfigPath, JSON.stringify(config, null, 2));
+  try {
+    fs.writeFileSync(tsconfigPath, JSON.stringify(config, null, 2));
+  } catch (error) {
+    throw new MigrationError(`Failed to write tsconfig.json to ${tsconfigPath}`, { cause: error });
+  }
 }
 
 export function getTsConfigPath(projectDir: string): string {

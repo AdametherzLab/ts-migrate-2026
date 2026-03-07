@@ -1,6 +1,6 @@
 {
   "name": "@adametherzlab/ts-migrate-2026",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI to automatically fix TypeScript breaking changes for TS 6.0/7.0 migrations.",
   "type": "module",
   "main": "src/index.ts",

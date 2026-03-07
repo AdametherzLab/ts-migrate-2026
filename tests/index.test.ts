@@ -12,6 +12,7 @@ import {
   getTsConfigPath,
   getDefaultDataDir,
   createIssue,
+  MigrationError,
 } from "../src/index";
 import * as path from "path";
 import * as fs from "fs";
@@ -133,5 +134,26 @@ describe("Path Utilities", () => {
     const projectDir = "/test/project";
     const tsconfigPath = getTsConfigPath(projectDir);
     expect(tsconfigPath).toBe(path.join(projectDir, "tsconfig.json"));
+  });
+});
+
+describe("MigrationError", () => {
+  it("should create an error with a message", () => {
+    const error = new MigrationError("Something went wrong");
+    expect(error.message).toBe("Something went wrong");
+    expect(error.name).toBe("MigrationError");
+  });
+
+  it("should create an error with a message and cause", () => {
+    const cause = new Error("Original error");
+    const error = new MigrationError("Something went wrong", { cause });
+    expect(error.message).toBe("Something went wrong");
+    expect(error.name).toBe("MigrationError");
+    expect(error.cause).toBe(cause);
+  });
+
+  it("should be an instance of Error", () => {
+    const error = new MigrationError("Test");
+    expect(error).toBeInstanceOf(Error);
   });
 });

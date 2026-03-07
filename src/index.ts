@@ -14,7 +14,9 @@ export {
   runCli,
 } from "./cli";
 
-export { Migrator } from "./migrator";
+export {
+  Migrator
+} from "./migrator";
 
 export {
   parseConfig,
@@ -25,7 +27,7 @@ export {
   getTsConfigPath,
 } from "./utils";
 
-export { getDefaultDataDir, createIssue } from "./types";
+export { getDefaultDataDir, createIssue, MigrationError } from "./types";
 
 export type {
   Config,
