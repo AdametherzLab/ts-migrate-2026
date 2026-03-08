@@ -16,10 +16,13 @@ interface MutableTsConfigJson {
 export class Migrator {
   private readonly program: ts.Program;
   private readonly config: Config;
+  private readonly projectRoot: string;
 
   constructor(config: Config) {
     this.config = config;
-    const tsConfigPath = ts.findConfigFile(process.cwd(), ts.sys.fileExists, "tsconfig.json");
+    this.projectRoot = process.cwd(); // Assume current working directory is project root
+
+    const tsConfigPath = ts.findConfigFile(this.projectRoot, ts.sys.fileExists, "tsconfig.json");
     if (!tsConfigPath) throw new MigrationError("tsconfig.json not found in the current directory or its parents.");
     
     const parsedCommandLine = ts.getParsedCommandLineOfConfigFile(
@@ -48,12 +51,20 @@ export class Migrator {
     const files = this.program.getSourceFiles();
     let filesScanned = 0;
 
+    const filesToProcess = this.config.files ? this.resolveFilesToProcess(this.config.files) : null;
+
     for (const file of files) {
-      filesScanned++;
       // Skip declaration files and node_modules for scanning deprecated patterns
       if (file.isDeclarationFile || file.fileName.includes("node_modules")) {
         continue;
       }
+
+      // If specific files/directories are provided, filter them
+      if (filesToProcess && !filesToProcess.has(file.fileName)) {
+        continue;
+      }
+
+      filesScanned++;
 
       // Special handling for tsconfig.json files
       if (path.basename(file.fileName) === "tsconfig.json") {
@@ -83,6 +94,38 @@ export class Migrator {
     }
 
     return actions;
+  }
+
+  private resolveFilesToProcess(filePaths: string[]): Set<string> {
+    const resolvedPaths = new Set<string>();
+    for (const item of filePaths) {
+      const absolutePath = path.resolve(this.projectRoot, item);
+      try {
+        const stats = fs.statSync(absolutePath);
+        if (stats.isDirectory()) {
+          // Recursively add all TypeScript files in the directory
+          this.addTsFilesFromDirectory(absolutePath, resolvedPaths);
+        } else if (stats.isFile() && (absolutePath.endsWith('.ts') || absolutePath.endsWith('.tsx') || absolutePath.endsWith('.json'))) {
+          resolvedPaths.add(absolutePath);
+        }
+      } catch (error) {
+        console.warn(`Warning: Could not resolve path '${item}'. Skipping.`, error);
+      }
+    }
+    return resolvedPaths;
+  }
+
+  private addTsFilesFromDirectory(directoryPath: string, resolvedPaths: Set<string>): void {
+    const files = fs.readdirSync(directoryPath);
+    for (const file of files) {
+      const fullPath = path.join(directoryPath, file);
+      const stats = fs.statSync(fullPath);
+      if (stats.isDirectory()) {
+        this.addTsFilesFromDirectory(fullPath, resolvedPaths);
+      } else if (stats.isFile() && (fullPath.endsWith('.ts') || fullPath.endsWith('.tsx') || fullPath.endsWith('.json'))) {
+        resolvedPaths.add(fullPath);
+      }
+    }
   }
 
   private checkTsConfig(filePath: string, issues: MigrationIssue[]): void {
@@ -148,7 +191,7 @@ export class Migrator {
           line: 1,
           column: 1,
           code: "TS5001",
-          message: `Target TypeScript version is ${targetVersion}, but tsconfig.json target is ${config.compilerOptions.target}. Consider upgrading.`, 
+          message: `Target TypeScript version is ${targetVersion}, but tsconfig.json target is ${config.compilerOptions.target}. Consider upgrading.`,
           severity: "warning",
         });
       }
@@ -202,54 +245,53 @@ export class Migrator {
     }
   }
 
-  private fixBaseUrl(filePath: string, oldContent: string, config: MutableTsConfigJson): CodemodAction | null {
-    if (!config.compilerOptions?.baseUrl) return null;
-
-    const newConfig = { ...config, compilerOptions: { ...config.compilerOptions } };
-    delete newConfig.compilerOptions.baseUrl;
-    const newContent = JSON.stringify(newConfig, null, 2);
-
-    return {
-      filePath,
-      description: "Remove deprecated baseUrl",
-      oldContent,
-      newContent,
-    };
-  }
-
-  private fixTarget(filePath: string, oldContent: string, config: MutableTsConfigJson): CodemodAction | null {
-    if (this.config.targetTsVersion < "6.0" || config.compilerOptions?.target !== "ES5") return null;
-
-    const newConfig = { ...config, compilerOptions: { ...config.compilerOptions, target: "ES2015" } };
-    const newContent = JSON.stringify(newConfig, null, 2);
-
-    return {
-      filePath,
-      description: `Upgrade target from ES5 to ES2015 for TS ${this.config.targetTsVersion}+`,
-      oldContent,
-      newContent,
-    };
-  }
-
-  private fixModuleResolution(filePath: string, oldContent: string, config: MutableTsConfigJson): CodemodAction | null {
-    if (this.config.targetTsVersion < "6.0" || config.compilerOptions?.moduleResolution !== "classic") return null;
-
-    const newConfig = { ...config, compilerOptions: { ...config.compilerOptions, moduleResolution: "node" } };
-    const newContent = JSON.stringify(newConfig, null, 2);
-
-    return {
-      filePath,
-      description: `Upgrade moduleResolution from classic to node for TS ${this.config.targetTsVersion}+`,
-      oldContent,
-      newContent,
-    };
-  }
-
   private parseTsConfig(content: string): MutableTsConfigJson {
     try {
       return JSON.parse(content) as MutableTsConfigJson;
     } catch (error) {
-      throw new MigrationError("Failed to parse tsconfig.json content", { cause: error });
+      throw new MigrationError("Failed to parse tsconfig.json content for codemod", { cause: error });
     }
+  }
+
+  private fixBaseUrl(filePath: string, oldContent: string, config: MutableTsConfigJson): CodemodAction {
+    const newConfig = { ...config };
+    if (newConfig.compilerOptions) {
+      delete newConfig.compilerOptions.baseUrl;
+    }
+    const newContent = JSON.stringify(newConfig, null, 2);
+    return {
+      filePath,
+      description: "Remove deprecated 'baseUrl' from compilerOptions",
+      oldContent,
+      newContent,
+    };
+  }
+
+  private fixTarget(filePath: string, oldContent: string, config: MutableTsConfigJson): CodemodAction {
+    const newConfig = { ...config };
+    if (newConfig.compilerOptions) {
+      newConfig.compilerOptions.target = "ES2020"; // Or a more appropriate default
+    }
+    const newContent = JSON.stringify(newConfig, null, 2);
+    return {
+      filePath,
+      description: "Update deprecated 'target' to 'ES2020' in compilerOptions",
+      oldContent,
+      newContent,
+    };
+  }
+
+  private fixModuleResolution(filePath: string, oldContent: string, config: MutableTsConfigJson): CodemodAction {
+    const newConfig = { ...config };
+    if (newConfig.compilerOptions) {
+      newConfig.compilerOptions.moduleResolution = "bundler"; // Or 'node16'
+    }
+    const newContent = JSON.stringify(newConfig, null, 2);
+    return {
+      filePath,
+      description: "Update deprecated 'moduleResolution' to 'bundler' in compilerOptions",
+      oldContent,
+      newContent,
+    };
   }
 }

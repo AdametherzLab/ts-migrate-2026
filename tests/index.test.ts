@@ -53,6 +53,27 @@ describe("CLI Argument Parsing", () => {
     const result = validateConfig(parsed);
     expect(result.targetTsVersion).toBe("6.0");
   });
+
+  it("should parse --files with a single file", () => {
+    const args = ["node", "script.js", "--files", "src/index.ts"];
+    const parsed = parseArgs(args);
+    const result = validateConfig(parsed);
+    expect(result.files).toEqual(["src/index.ts"]);
+  });
+
+  it("should parse --files with multiple files", () => {
+    const args = ["node", "script.js", "--files", "src/index.ts", "src/cli.ts"];
+    const parsed = parseArgs(args);
+    const result = validateConfig(parsed);
+    expect(result.files).toEqual(["src/index.ts", "src/cli.ts"]);
+  });
+
+  it("should parse --files with a directory", () => {
+    const args = ["node", "script.js", "--files", "src/"];
+    const parsed = parseArgs(args);
+    const result = validateConfig(parsed);
+    expect(result.files).toEqual(["src/"]);
+  });
 });
 
 describe("Configuration Validation", () => {
@@ -63,6 +84,7 @@ describe("Configuration Validation", () => {
     expect(result.dryRun).toBe(true);
     expect(result.logLevel).toBe("info");
     expect(result.targetTsVersion).toBe("6.0");
+    expect(result.files).toBeUndefined();
   });
 
   it("should override defaults with provided values", () => {
@@ -70,11 +92,13 @@ describe("Configuration Validation", () => {
       dryRun: false,
       logLevel: "error" as const,
       targetTsVersion: "7.0" as const,
+      files: ["src/main.ts"],
     };
     const result = validateConfig(partialConfig);
     expect(result.dryRun).toBe(false);
     expect(result.logLevel).toBe("error");
     expect(result.targetTsVersion).toBe("7.0");
+    expect(result.files).toEqual(["src/main.ts"]);
   });
 });
 

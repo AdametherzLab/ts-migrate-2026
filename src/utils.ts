@@ -12,6 +12,7 @@ export function parseConfig(configPath: string): Config {
       dryRun: parsed.dryRun ?? true,
       logLevel: parsed.logLevel ?? "info",
       targetTsVersion: parsed.targetTsVersion ?? "6.0",
+      files: parsed.files,
     };
   } catch (error) {
     throw new MigrationError(`Failed to parse config file at ${configPath}`, { cause: error });
