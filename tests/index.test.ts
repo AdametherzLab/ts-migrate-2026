@@ -74,6 +74,13 @@ describe("CLI Argument Parsing", () => {
     const result = validateConfig(parsed);
     expect(result.files).toEqual(["src/"]);
   });
+
+  it("should parse --files with glob patterns", () => {
+    const args = ["node", "script.js", "--files", "src/**/*.ts", "tests/**/*.test.ts"];
+    const parsed = parseArgs(args);
+    const result = validateConfig(parsed);
+    expect(result.files).toEqual(["src/**/*.ts", "tests/**/*.test.ts"]);
+  });
 });
 
 describe("Configuration Validation", () => {

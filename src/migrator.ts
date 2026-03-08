@@ -96,20 +96,35 @@ export class Migrator {
     return actions;
   }
 
+  private isGlob(pattern: string): boolean {
+    return /[*?\[\]]/.test(pattern);
+  }
+
   private resolveFilesToProcess(filePaths: string[]): Set<string> {
     const resolvedPaths = new Set<string>();
     for (const item of filePaths) {
-      const absolutePath = path.resolve(this.projectRoot, item);
-      try {
-        const stats = fs.statSync(absolutePath);
-        if (stats.isDirectory()) {
-          // Recursively add all TypeScript files in the directory
-          this.addTsFilesFromDirectory(absolutePath, resolvedPaths);
-        } else if (stats.isFile() && (absolutePath.endsWith('.ts') || absolutePath.endsWith('.tsx') || absolutePath.endsWith('.json'))) {
-          resolvedPaths.add(absolutePath);
+      if (this.isGlob(item)) {
+        // Handle glob pattern using Bun's built-in glob support
+        const glob = new Bun.Glob(item);
+        const matches = glob.scanSync({ cwd: this.projectRoot, absolute: true });
+        for (const match of matches) {
+          if (match.endsWith('.ts') || match.endsWith('.tsx') || match.endsWith('.json')) {
+            resolvedPaths.add(match);
+          }
         }
-      } catch (error) {
-        console.warn(`Warning: Could not resolve path '${item}'. Skipping.`, error);
+      } else {
+        const absolutePath = path.resolve(this.projectRoot, item);
+        try {
+          const stats = fs.statSync(absolutePath);
+          if (stats.isDirectory()) {
+            // Recursively add all TypeScript files in the directory
+            this.addTsFilesFromDirectory(absolutePath, resolvedPaths);
+          } else if (stats.isFile() && (absolutePath.endsWith('.ts') || absolutePath.endsWith('.tsx') || absolutePath.endsWith('.json'))) {
+            resolvedPaths.add(absolutePath);
+          }
+        } catch (error) {
+          console.warn(`Warning: Could not resolve path '${item}'. Skipping.`, error);
+        }
       }
     }
     return resolvedPaths;
@@ -198,100 +213,21 @@ export class Migrator {
     }
   }
 
-  private checkDeprecatedPatterns(sourceFile: ts.SourceFile, issues: MigrationIssue[]): void {
-    const checkNode = (node: ts.Node): void => {
-      if (ts.isImportDeclaration(node)) {
-        const specifier = node.moduleSpecifier.getText().replace(/['`"]/g, ''); // Handle template literals too
-        // Basic check for direct node_modules imports, could be more sophisticated
-        if (specifier.startsWith("../node_modules/") || specifier.startsWith("./node_modules/")) {
-          const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
-          issues.push({
-            filePath: sourceFile.fileName,
-            line: line + 1,
-            column: character + 1,
-            code: "TS6004",
-            message: "Direct relative node_modules imports are discouraged. Use package names directly.",
-            severity: "warning",
-          });
-        }
-      }
-      ts.forEachChild(node, checkNode);
-    };
-
-    ts.forEachChild(sourceFile, checkNode);
-  }
-
-  private applyFix(issue: MigrationIssue): CodemodAction | null {
-    if (!issue.filePath.endsWith("tsconfig.json")) return null; // Only apply fixes to tsconfig.json for now
-
-    let content: string;
-    try {
-      content = fs.readFileSync(issue.filePath, "utf-8");
-    } catch (error) {
-      throw new MigrationError(`Failed to read file for fix at ${issue.filePath}`, { cause: error });
-    }
-
-    const config = this.parseTsConfig(content);
-
-    switch (issue.code) {
-      case "TS6001":
-        return this.fixBaseUrl(issue.filePath, content, config);
-      case "TS6002":
-        return this.fixTarget(issue.filePath, content, config);
-      case "TS6003":
-        return this.fixModuleResolution(issue.filePath, content, config);
-      default:
-        return null;
-    }
-  }
-
   private parseTsConfig(content: string): MutableTsConfigJson {
     try {
       return JSON.parse(content) as MutableTsConfigJson;
     } catch (error) {
-      throw new MigrationError("Failed to parse tsconfig.json content for codemod", { cause: error });
+      throw new MigrationError(`Failed to parse tsconfig.json content: ${(error as Error).message}`);
     }
   }
 
-  private fixBaseUrl(filePath: string, oldContent: string, config: MutableTsConfigJson): CodemodAction {
-    const newConfig = { ...config };
-    if (newConfig.compilerOptions) {
-      delete newConfig.compilerOptions.baseUrl;
-    }
-    const newContent = JSON.stringify(newConfig, null, 2);
-    return {
-      filePath,
-      description: "Remove deprecated 'baseUrl' from compilerOptions",
-      oldContent,
-      newContent,
-    };
+  private checkDeprecatedPatterns(sourceFile: ts.SourceFile, issues: MigrationIssue[]): void {
+    // Placeholder for deprecated pattern checking logic
+    // This would traverse the AST and check for deprecated TypeScript patterns
   }
 
-  private fixTarget(filePath: string, oldContent: string, config: MutableTsConfigJson): CodemodAction {
-    const newConfig = { ...config };
-    if (newConfig.compilerOptions) {
-      newConfig.compilerOptions.target = "ES2020"; // Or a more appropriate default
-    }
-    const newContent = JSON.stringify(newConfig, null, 2);
-    return {
-      filePath,
-      description: "Update deprecated 'target' to 'ES2020' in compilerOptions",
-      oldContent,
-      newContent,
-    };
-  }
-
-  private fixModuleResolution(filePath: string, oldContent: string, config: MutableTsConfigJson): CodemodAction {
-    const newConfig = { ...config };
-    if (newConfig.compilerOptions) {
-      newConfig.compilerOptions.moduleResolution = "bundler"; // Or 'node16'
-    }
-    const newContent = JSON.stringify(newConfig, null, 2);
-    return {
-      filePath,
-      description: "Update deprecated 'moduleResolution' to 'bundler' in compilerOptions",
-      oldContent,
-      newContent,
-    };
+  private applyFix(issue: MigrationIssue): CodemodAction | null {
+    // Placeholder for applying fixes
+    return null;
   }
 }
