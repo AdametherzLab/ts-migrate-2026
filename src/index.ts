@@ -30,6 +30,8 @@ export {
 
 export { getDefaultDataDir, createIssue, MigrationError } from "./types";
 
+export { handleInit } from './init';
+
 export type {
   Config,
   LogLevel,
