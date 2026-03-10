@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import readline from 'readline';
 import { createIssue, getDefaultDataDir, MigrationError } from './types';
 import type { Config, LogLevel, ScanResult, CodemodAction } from './types';
 import { Migrator } from './migrator';
@@ -11,11 +12,6 @@ interface ParseResult {
   help: boolean;
 }
 
-/**
- * Parses command-line arguments into a partial Config object and a help flag.
- * @param argv The array of command-line arguments (e.g., process.argv).
- * @returns An object containing a partial Config and a boolean indicating if help was requested.
- */
 export function parseArgs(argv: string[]): ParseResult {
   const args = argv.slice(2);
   const config: Partial<Config> = {};
@@ -34,7 +30,7 @@ export function parseArgs(argv: string[]): ParseResult {
       }
     } else if (arg === '--target') {
       const target = args[++i];
-      if (target === '6.0' || target === '7.0') { // Extend with more versions as needed
+      if (target === '6.0' || target === '7.0') {
         config.targetTsVersion = target as '6.0' | '7.0';
       }
     } else if (arg === '--data-dir') {
@@ -46,31 +42,26 @@ export function parseArgs(argv: string[]): ParseResult {
       if (filesStr) {
         config.files = filesStr.split(',').map(s => s.trim()).filter(Boolean);
       }
+    } else if (arg === '--interactive') {
+      config.interactive = true;
     }
   }
 
   return { config, help };
 }
 
-/**
- * Validates and normalizes a partial Config object, applying default values where necessary.
- * @param input A partial Config object, potentially nested under a 'config' key.
- * @returns A complete and validated Config object.
- */
 export function validateConfig(input: Partial<Config> & { config?: Partial<Config> }): Config {
   const config = input.config ? input.config : input;
   return {
     dataDir: config.dataDir || getDefaultDataDir(),
-    dryRun: config.dryRun ?? true, // Default to true if not explicitly set
+    dryRun: config.dryRun ?? true,
     logLevel: config.logLevel || 'info',
-    targetTsVersion: config.targetTsVersion || '6.0', // Default target version
-    files: config.files, // Keep files as is, can be undefined
+    targetTsVersion: config.targetTsVersion || '6.0',
+    files: config.files,
+    interactive: config.interactive ?? false,
   };
 }
 
-/**
- * Prints the help message to the console.
- */
 export function printHelp(): void {
   console.log(`
 ts-migrate-2026 - CLI to automatically fix TypeScript breaking changes for TS 6.0/7.0 migrations
@@ -86,18 +77,27 @@ Options:
   --target         Target TypeScript version: 6.0 or 7.0 (default: 6.0)
   --data-dir       Directory to store migration data (default: ~/.ts-migrate-2026)
   --files          Comma-separated list of files or directories to process
+  --interactive    Prompt to confirm each individual change
   --help           Show this help message
 
 Commands:
-  init             Generate configuration file interactively
-`);
+  init             Generate configuration file interactively`);
 }
 
-/**
- * Runs the main CLI logic.
- * @param argv The array of command-line arguments (defaults to process.argv).
- * @returns A Promise that resolves to the exit code (0 for success, 1 for failure).
- */
+async function askYesNo(question: string): Promise<boolean> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(question + ' (y/n) ', (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase() === 'y');
+    });
+  });
+}
+
 export async function runCli(argv: string[] = process.argv): Promise<number> {
   if (argv[2] === 'init') {
     try {
@@ -115,7 +115,6 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
     return 0;
   }
 
-  // Attempt to load config from file first, then merge with CLI args
   let fileConfig: Partial<Config> = {};
   const configPath = path.join(process.cwd(), 'ts-migrate.json');
   if (fs.existsSync(configPath)) {
@@ -128,7 +127,6 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
     }
   }
 
-  // Merge file config with CLI args, CLI args take precedence
   const mergedConfig = { ...fileConfig, ...args };
   const config = validateConfig(mergedConfig);
   const dataDir = config.dataDir;
@@ -141,6 +139,7 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
     console.log(`Using data directory: ${dataDir}`);
     console.log(`Target TypeScript version: ${config.targetTsVersion}`);
     console.log(`Dry run: ${config.dryRun ? 'Enabled' : 'Disabled (applying changes)'}`);
+    console.log(`Interactive mode: ${config.interactive ? 'Enabled' : 'Disabled'}`);
     if (config.files && config.files.length > 0) {
       console.log(`Processing specific files/directories: ${config.files.join(', ')}`);
     } else {
@@ -161,6 +160,7 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
 
       if (actions.length > 0) {
         console.log(`Generated ${actions.length} codemod actions.`);
+
         for (const action of actions) {
           console.log(`
 --- Diff for ${action.filePath} (${action.description}) ---`);
@@ -169,11 +169,16 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
           console.log(action.newContent);
           console.log('--------------------------------------------------');
 
-          if (!config.dryRun) {
+          let shouldApply = !config.dryRun;
+          if (config.interactive) {
+            shouldApply = await askYesNo(`Apply changes to ${action.filePath}?`);
+          }
+
+          if (shouldApply && !config.dryRun) {
             fs.writeFileSync(action.filePath, action.newContent, 'utf-8');
-            console.log(`Applied changes to ${action.filePath}`);
+            console.log(`✅ Applied changes to ${action.filePath}`);
           } else {
-            console.log(`(Dry run) Changes for ${action.filePath} not applied.`);
+            console.log(`⏩ Skipped changes to ${action.filePath}`);
           }
         }
       } else {
