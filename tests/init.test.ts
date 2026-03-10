@@ -1,4 +1,4 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, mock, afterEach } from 'bun:test';
 import { handleInit } from '../src/init';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -19,7 +19,7 @@ const mockReadline = (inputs: string[]) => {
       callback(inputs[index++]);
     },
     close: () => {},
-  });
+  }) as unknown as readline.Interface;
 
   return () => {
     readline.createInterface = originalCreateInterface;
@@ -37,7 +37,7 @@ describe('Interactive CLI Config Generation', () => {
   });
 
   it('should create config with defaults on empty inputs', async () => {
-    const restore = mockReadline(['', '', '', '', '']);
+    const restore = mockReadline(['', '', '', '', '', 'yes']);
     
     await handleInit();
     
@@ -96,6 +96,33 @@ describe('Interactive CLI Config Generation', () => {
     
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     expect(config.files).toEqual(['src/**/*.ts', 'test']);
+    restore();
+  });
+
+  it('should create config with only target version specified', async () => {
+    const restore = mockReadline(['5.5', '', '', '', '', 'yes']);
+
+    await handleInit();
+
+    expect(fs.existsSync(configPath)).toBeTrue();
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    expect(config.targetTsVersion).toBe('5.5');
+    expect(config.dryRun).toBe(true);
+    expect(config.logLevel).toBe('info');
+    expect(config.dataDir).toBe(getDefaultDataDir());
+    expect(config.files).toBeUndefined();
+    restore();
+  });
+
+  it('should create config with only dry run disabled', async () => {
+    const restore = mockReadline(['', '', 'no', '', '', 'yes']);
+
+    await handleInit();
+
+    expect(fs.existsSync(configPath)).toBeTrue();
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    expect(config.dryRun).toBe(false);
+    expect(config.targetTsVersion).toBe('6.0');
     restore();
   });
 });

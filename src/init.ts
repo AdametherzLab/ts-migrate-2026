@@ -79,6 +79,14 @@ export async function handleInit(): Promise<void> {
   console.log('Run "ts-migrate-2026" to start your migration!');
 }
 
+/**
+ * Asks a question to the user and returns their answer, applying a default if empty.
+ * Includes a validator function to ensure the input is valid.
+ * @param question The question to ask.
+ * @param defaultValue The default value to use if the user enters nothing.
+ * @param validator A function to validate the user's input. It should return the validated input.
+ * @returns A promise that resolves with the validated answer.
+ */
 async function askQuestion(
   question: string,
   defaultValue: string,
@@ -100,6 +108,12 @@ async function askQuestion(
   });
 }
 
+/**
+ * Asks a yes/no question to the user.
+ * @param question The yes/no question to ask.
+ * @param defaultValue The default boolean value if the user enters nothing.
+ * @returns A promise that resolves to `true` for yes, `false` for no.
+ */
 async function askYesNo(question: string, defaultValue: boolean): Promise<boolean> {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -118,22 +132,45 @@ async function askYesNo(question: string, defaultValue: boolean): Promise<boolea
   });
 }
 
+/**
+ * Validates the target TypeScript version input.
+ * If invalid, logs a warning and returns the default '6.0'.
+ * @param input The user's input for target version.
+ * @returns The validated target version string.
+ */
 function validateTargetVersion(input: string): string {
   if (VALID_TARGET_VERSIONS.includes(input as TargetTsVersion)) return input;
   console.log(`⚠️  Invalid version. Using default: 6.0. Valid options: ${VALID_TARGET_VERSIONS.join(', ')}`);
   return '6.0';
 }
 
+/**
+ * Validates the log level input.
+ * If invalid, logs a warning and returns the default 'info'.
+ * @param input The user's input for log level.
+ * @returns The validated log level string.
+ */
 function validateLogLevel(input: string): string {
   if (VALID_LOG_LEVELS.includes(input as LogLevel)) return input;
   console.log(`⚠️  Invalid level. Using default: info. Valid options: ${VALID_LOG_LEVELS.join(', ')}`);
   return 'info';
 }
 
+/**
+ * Validates the data directory path.
+ * Returns the input trimmed, or the default data directory if input is empty.
+ * @param input The user's input for data directory.
+ * @returns The validated data directory path.
+ */
 function validateDataDir(input: string): string {
   return input.trim() || getDefaultDataDir();
 }
 
+/**
+ * Validates the files/directories input. Currently performs no specific validation.
+ * @param input The user's input for files/directories.
+ * @returns The input string as is.
+ */
 function validateFiles(input: string): string {
   return input;
 }
