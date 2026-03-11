@@ -20,35 +20,40 @@ export async function handleInit(): Promise<void> {
   const targetVersion = await askQuestion(
     `Target TypeScript version (${VALID_TARGET_VERSIONS.join(', ')}) [6.0]: `,
     '6.0',
-    validateTargetVersion
+    validateTargetVersion,
+    'Select the TypeScript version you want to migrate to.\n  - 6.0: Stable release with new type checking\n  - 7.0: Latest features (experimental support)'
   );
 
   const defaultDataDir = getDefaultDataDir();
   const dataDir = await askQuestion(
     `Storage directory for logs/reports [${defaultDataDir}]: `,
     defaultDataDir,
-    validateDataDir
+    validateDataDir,
+    'Where should we store migration logs and analysis reports?'
   );
 
   // ─── Migration Behavior ───────────────────────────────────
   console.log('\n⚙️  Migration Behavior');
   const dryRun = await askYesNo(
     'Enable safe mode (dry run) to preview changes without modifying files?',
-    true
+    true,
+    '\x1b[33mSafe mode is recommended for first runs. No files will be modified.\x1b[0m'
   );
 
   const logLevel = await askQuestion(
     `Log verbosity level (${VALID_LOG_LEVELS.join(', ')}) [info]: `,
     'info',
-    validateLogLevel
+    validateLogLevel,
+    'Control the detail level of migration logs:\n  - debug: Full technical details\n  - info: Progress updates\n  - warn: Only warnings/errors'
   );
 
   // ─── File Selection ───────────────────────────────────────
   console.log('\n📁 File Selection');
   const files = await askQuestion(
-    'Specific files/directories to process (comma-separated, e.g. "src/, test/**/*.ts") [all files]: ',
+    'Specific files/directories to process (comma-separated globs) [all files]: ',
     '',
-    validateFiles
+    validateFiles,
+    'Examples:\n  - src/**/*.ts  All TypeScript files in src\n  - test, lib     Specific directories'
   ).then(f => f.split(',').map(s => s.trim()).filter(Boolean));
 
   // ─── Config Summary ───────────────────────────────────────
@@ -60,42 +65,42 @@ export async function handleInit(): Promise<void> {
     files: files.length > 0 ? files : undefined
   };
 
-  console.log('\n✅ Configuration Summary:');
-  console.log(`• Target Version: ${config.targetTsVersion}`);
-  console.log(`• Data Directory: ${config.dataDir}`);
-  console.log(`• Dry Run: ${config.dryRun ? 'Enabled' : 'Disabled'}`);
-  console.log(`• Log Level: ${config.logLevel}`);
-  console.log(`• Files: ${config.files?.join(', ') || 'All project files'}`);
+  console.log('\n✅ \x1b[1mConfiguration Summary:\x1b[0m');
+  console.log(`│ Target Version: \x1b[36m${config.targetTsVersion}\x1b[0m`);
+  console.log(`│ Data Directory: \x1b[36m${config.dataDir}\x1b[0m`);
+  console.log(`│ Dry Run:        \x1b[36m${config.dryRun ? 'Enabled' : 'Disabled'}\x1b[0m`);
+  console.log(`│ Log Level:      \x1b[36m${config.logLevel}\x1b[0m`);
+  console.log(`│ Files:          \x1b[36m${config.files?.join(', ') || 'All project files'}\x1b[0m`);
 
   const confirm = await askYesNo('\nCreate configuration file with these settings?', true);
   if (!confirm) {
-    console.log('\nConfiguration cancelled. No files were created.');
+    console.log('\n\x1b[33mConfiguration cancelled. No files were created.\x1b[0m');
     return;
   }
 
   const configPath = path.join(process.cwd(), 'ts-migrate.json');
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  console.log(`\n🎉 Configuration saved to ${path.relative(process.cwd(), configPath)}`);
-  console.log('Run "ts-migrate-2026" to start your migration!');
+  console.log(`\n🎉 \x1b[32mConfiguration saved to ${path.relative(process.cwd(), configPath)}\x1b[0m`);
+  console.log('Run \x1b[1mts-migrate-2026\x1b[0m to start your migration!');
 }
 
 /**
- * Asks a question to the user and returns their answer, applying a default if empty.
- * Includes a validator function to ensure the input is valid.
- * @param question The question to ask.
- * @param defaultValue The default value to use if the user enters nothing.
- * @param validator A function to validate the user's input. It should return the validated input.
- * @returns A promise that resolves with the validated answer.
+ * Asks a question to the user with optional explanation
  */
 async function askQuestion(
   question: string,
   defaultValue: string,
-  validator: (input: string) => string
+  validator: (input: string) => string,
+  explanation?: string
 ): Promise<string> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
+
+  if (explanation) {
+    console.log('\n' + explanation);
+  }
 
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
@@ -109,20 +114,25 @@ async function askQuestion(
 }
 
 /**
- * Asks a yes/no question to the user.
- * @param question The yes/no question to ask.
- * @param defaultValue The default boolean value if the user enters nothing.
- * @returns A promise that resolves to `true` for yes, `false` for no.
+ * Enhanced yes/no prompt with explanation
  */
-async function askYesNo(question: string, defaultValue: boolean): Promise<boolean> {
+async function askYesNo(
+  question: string,
+  defaultValue: boolean,
+  explanation?: string
+): Promise<boolean> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
 
+  if (explanation) {
+    console.log('\n' + explanation);
+  }
+
   const defaultStr = defaultValue ? 'Y/n' : 'y/N';
   return new Promise((resolve) => {
-    rl.question(`${question} (${defaultStr})? `, (answer) => {
+    rl.question(`\x1b[1m${question}\x1b[0m (${defaultStr})? `, (answer) => {
       rl.close();
       const input = answer.trim().toLowerCase();
       if (input === 'y' || input === 'yes') resolve(true);
@@ -132,45 +142,22 @@ async function askYesNo(question: string, defaultValue: boolean): Promise<boolea
   });
 }
 
-/**
- * Validates the target TypeScript version input.
- * If invalid, logs a warning and returns the default '6.0'.
- * @param input The user's input for target version.
- * @returns The validated target version string.
- */
 function validateTargetVersion(input: string): string {
   if (VALID_TARGET_VERSIONS.includes(input as TargetTsVersion)) return input;
-  console.log(`⚠️  Invalid version. Using default: 6.0. Valid options: ${VALID_TARGET_VERSIONS.join(', ')}`);
+  console.log(`\x1b[33m⚠️  Invalid version. Using default: 6.0. Valid options: ${VALID_TARGET_VERSIONS.join(', ')}\x1b[0m`);
   return '6.0';
 }
 
-/**
- * Validates the log level input.
- * If invalid, logs a warning and returns the default 'info'.
- * @param input The user's input for log level.
- * @returns The validated log level string.
- */
 function validateLogLevel(input: string): string {
   if (VALID_LOG_LEVELS.includes(input as LogLevel)) return input;
-  console.log(`⚠️  Invalid level. Using default: info. Valid options: ${VALID_LOG_LEVELS.join(', ')}`);
+  console.log(`\x1b[33m⚠️  Invalid level. Using default: info. Valid options: ${VALID_LOG_LEVELS.join(', ')}\x1b[0m`);
   return 'info';
 }
 
-/**
- * Validates the data directory path.
- * Returns the input trimmed, or the default data directory if input is empty.
- * @param input The user's input for data directory.
- * @returns The validated data directory path.
- */
 function validateDataDir(input: string): string {
   return input.trim() || getDefaultDataDir();
 }
 
-/**
- * Validates the files/directories input. Currently performs no specific validation.
- * @param input The user's input for files/directories.
- * @returns The input string as is.
- */
 function validateFiles(input: string): string {
   return input;
 }

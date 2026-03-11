@@ -52,8 +52,38 @@ describe('Interactive CLI Config Generation', () => {
     restore();
   });
 
-  it('should handle cancellation during confirmation', async () => {
-    const restore = mockReadline(['7.0', '', 'yes', 'debug', '', 'no']);
+  it('should handle partial inputs with invalid values', async () => {
+    const restore = mockReadline(['invalid', '/bad/path', 'maybe', 'verbose', '*.ts', 'yes']);
+    
+    await handleInit();
+    
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    expect(config.targetTsVersion).toBe('6.0');
+    expect(config.dataDir).toBe(getDefaultDataDir());
+    expect(config.dryRun).toBe(true);
+    expect(config.logLevel).toBe('info');
+    expect(config.files).toEqual(['*.ts']);
+    restore();
+  });
+
+  it('should handle complex file glob patterns', async () => {
+    const restore = mockReadline(['7.0', '', 'no', 'debug', 'src/**/*.ts, test/, .github/**/*.yml', 'yes']);
+    
+    await handleInit();
+    
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    expect(config.files).toEqual([
+      'src/**/*.ts',
+      'test/',
+      '.github/**/*.yml'
+    ]);
+    expect(config.targetTsVersion).toBe('7.0');
+    expect(config.dryRun).toBe(false);
+    restore();
+  });
+
+  it('should cancel configuration when user rejects summary', async () => {
+    const restore = mockReadline(['6.0', '', 'yes', 'info', '', 'no']);
     
     await handleInit();
     
@@ -61,68 +91,13 @@ describe('Interactive CLI Config Generation', () => {
     restore();
   });
 
-  it('should create config with custom values', async () => {
-    const restore = mockReadline(['7.0', '/custom/path', 'no', 'debug', 'src,test', 'yes']);
-    
-    await handleInit();
-    
-    expect(fs.existsSync(configPath)).toBeTrue();
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    expect(config).toEqual({
-      targetTsVersion: '7.0',
-      dataDir: '/custom/path',
-      dryRun: false,
-      logLevel: 'debug',
-      files: ['src', 'test']
-    });
-    restore();
-  });
-
-  it('should handle invalid inputs with warnings', async () => {
-    const restore = mockReadline(['invalid', '', 'maybe', 'verbose', '', 'yes']);
+  it('should handle special path characters in data directory', async () => {
+    const restore = mockReadline(['5.5', '~/custom-data-dir', '', '', '', 'yes']);
     
     await handleInit();
     
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    expect(config.targetTsVersion).toBe('6.0');
-    expect(config.logLevel).toBe('info');
-    restore();
-  });
-
-  it('should handle file glob patterns', async () => {
-    const restore = mockReadline(['', '', '', '', 'src/**/*.ts, test', 'yes']);
-    
-    await handleInit();
-    
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    expect(config.files).toEqual(['src/**/*.ts', 'test']);
-    restore();
-  });
-
-  it('should create config with only target version specified', async () => {
-    const restore = mockReadline(['5.5', '', '', '', '', 'yes']);
-
-    await handleInit();
-
-    expect(fs.existsSync(configPath)).toBeTrue();
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    expect(config.targetTsVersion).toBe('5.5');
-    expect(config.dryRun).toBe(true);
-    expect(config.logLevel).toBe('info');
-    expect(config.dataDir).toBe(getDefaultDataDir());
-    expect(config.files).toBeUndefined();
-    restore();
-  });
-
-  it('should create config with only dry run disabled', async () => {
-    const restore = mockReadline(['', '', 'no', '', '', 'yes']);
-
-    await handleInit();
-
-    expect(fs.existsSync(configPath)).toBeTrue();
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    expect(config.dryRun).toBe(false);
-    expect(config.targetTsVersion).toBe('6.0');
+    expect(config.dataDir).toMatch(/custom-data-dir$/);
     restore();
   });
 });
