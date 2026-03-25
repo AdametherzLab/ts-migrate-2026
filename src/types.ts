@@ -33,6 +33,8 @@ export interface Config {
   readonly logLevel: LogLevel;
   readonly targetTsVersion: TargetTsVersion;
   readonly files?: string[]; // Optional: specific files/directories to migrate
+  readonly interactive?: boolean; // Prompt for each change
+  readonly guided?: boolean; // Step-by-step guided migration
 }
 
 export interface TsConfigJson {

@@ -44,6 +44,8 @@ export function parseArgs(argv: string[]): ParseResult {
       }
     } else if (arg === '--interactive') {
       config.interactive = true;
+    } else if (arg === '--guided') {
+      config.guided = true;
     }
   }
 
@@ -59,6 +61,7 @@ export function validateConfig(input: Partial<Config> & { config?: Partial<Confi
     targetTsVersion: config.targetTsVersion || '6.0',
     files: config.files,
     interactive: config.interactive ?? false,
+    guided: config.guided ?? false,
   };
 }
 
@@ -78,6 +81,7 @@ Options:
   --data-dir       Directory to store migration data (default: ~/.ts-migrate-2026)
   --files          Comma-separated list of files or directories to process
   --interactive    Prompt to confirm each individual change
+  --guided         Step-by-step guided migration with explanations and choices
   --help           Show this help message
 
 Commands:
@@ -96,6 +100,220 @@ async function askYesNo(question: string): Promise<boolean> {
       resolve(answer.trim().toLowerCase() === 'y');
     });
   });
+}
+
+async function askMultipleChoice<T>(
+  question: string,
+  choices: { label: string; value: T; description?: string }[],
+  defaultValue?: T
+): Promise<T> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  console.log(`\n${question}`);
+  choices.forEach((choice, index) => {
+    const defaultIndicator = defaultValue === choice.value ? ' (default)' : '';
+    console.log(`  ${index + 1}. ${choice.label}${defaultIndicator}`);
+    if (choice.description) {
+      console.log(`     ${choice.description}`);
+    }
+  });
+
+  return new Promise((resolve) => {
+    const ask = () => {
+      rl.question(`\nEnter choice [1-${choices.length}]: `, (answer) => {
+        const num = parseInt(answer.trim());
+        if (!isNaN(num) && num >= 1 && num <= choices.length) {
+          rl.close();
+          resolve(choices[num - 1].value);
+        } else if (answer.trim() === '' && defaultValue !== undefined) {
+          rl.close();
+          resolve(defaultValue);
+        } else {
+          console.log(`Please enter a number between 1 and ${choices.length}.`);
+          ask();
+        }
+      });
+    };
+    ask();
+  });
+}
+
+async function runGuidedMigration(config: Config): Promise<number> {
+  console.log('\n🚀 Starting Guided Migration 🚀');
+  console.log('This interactive guide will walk you through the migration step-by-step.');
+  console.log('You can pause or cancel at any time.\n');
+
+  // Step 1: Project analysis
+  console.log('📊 Step 1: Project Analysis');
+  console.log('First, let\'s scan your project to understand the current state...');
+  
+  const proceed = await askYesNo('Proceed with scanning?');
+  if (!proceed) {
+    console.log('\n❌ Migration cancelled.');
+    return 0;
+  }
+
+  console.log('\nScanning project for migration issues...');
+  const migrator = new Migrator(config);
+  const scanResult = migrator.scan();
+
+  console.log(`\n✅ Scan complete:`);
+  console.log(`   • Files scanned: ${scanResult.filesScanned}`);
+  console.log(`   • Issues found: ${scanResult.issues.length}`);
+
+  if (scanResult.issues.length === 0) {
+    console.log('\n🎉 No migration issues found! Your project is already compatible.');
+    return 0;
+  }
+
+  // Step 2: Issue review
+  console.log('\n🔍 Step 2: Issue Review');
+  console.log(`Found ${scanResult.issues.length} issue(s) that need attention.`);
+  
+  const reviewChoice = await askMultipleChoice(
+    'How would you like to review the issues?',
+    [
+      {
+        label: 'Show summary only',
+        value: 'summary',
+        description: 'See counts by severity and file type'
+      },
+      {
+        label: 'Show all issues',
+        value: 'all',
+        description: 'List every issue with details'
+      },
+      {
+        label: 'Show only critical issues',
+        value: 'critical',
+        description: 'Focus on errors that must be fixed'
+      }
+    ],
+    'summary'
+  );
+
+  if (reviewChoice === 'all') {
+    console.log('\n📋 All Issues:');
+    scanResult.issues.forEach((issue, i) => {
+      console.log(`\n${i + 1}. ${issue.filePath}:${issue.line}:${issue.column}`);
+      console.log(`   [${issue.code}] ${issue.message}`);
+      console.log(`   Severity: ${issue.severity}`);
+    });
+  } else if (reviewChoice === 'critical') {
+    const critical = scanResult.issues.filter(i => i.severity === 'error');
+    console.log(`\n⚠️  Critical Issues (${critical.length}):`);
+    critical.forEach((issue, i) => {
+      console.log(`\n${i + 1}. ${issue.filePath}:${issue.line}:${issue.column}`);
+      console.log(`   [${issue.code}] ${issue.message}`);
+    });
+  } else {
+    const errors = scanResult.issues.filter(i => i.severity === 'error').length;
+    const warnings = scanResult.issues.filter(i => i.severity === 'warning').length;
+    const files = [...new Set(scanResult.issues.map(i => i.filePath))].length;
+    console.log(`\n📊 Summary:`);
+    console.log(`   • Files affected: ${files}`);
+    console.log(`   • Critical issues: ${errors}`);
+    console.log(`   • Warnings: ${warnings}`);
+  }
+
+  // Step 3: Fix strategy
+  console.log('\n🔧 Step 3: Fix Strategy');
+  const strategy = await askMultipleChoice(
+    'How would you like to apply fixes?',
+    [
+      {
+        label: 'Apply all fixes automatically',
+        value: 'auto',
+        description: 'Apply all safe fixes without confirmation'
+      },
+      {
+        label: 'Review each fix individually',
+        value: 'review',
+        description: 'See and approve each change before applying'
+      },
+      {
+        label: 'Generate patch file only',
+        value: 'patch',
+        description: 'Create a .patch file for manual review'
+      }
+    ],
+    'review'
+  );
+
+  console.log('\n🔄 Generating fixes...');
+  const actions = migrator.applyCodemods(scanResult.issues);
+
+  if (actions.length === 0) {
+    console.log('\nℹ️  No automatic fixes available for the detected issues.');
+    console.log('You may need to fix them manually.');
+    return 0;
+  }
+
+  console.log(`\n✅ Generated ${actions.length} fix(es).`);
+
+  if (strategy === 'patch') {
+    const patchPath = path.join(process.cwd(), 'ts-migrate.patch');
+    const patchContent = actions.map(action => 
+      `--- a/${action.filePath}\n+++ b/${action.filePath}\n@@ -1 +1 @@\n-${action.oldContent}\n+${action.newContent}`
+    ).join('\n\n');
+    
+    fs.writeFileSync(patchPath, patchContent);
+    console.log(`\n📄 Patch file saved to: ${patchPath}`);
+    console.log('Apply it with: git apply ts-migrate.patch');
+    return 0;
+  }
+
+  // Step 4: Apply fixes
+  console.log('\n⚡ Step 4: Apply Fixes');
+  
+  let applied = 0;
+  let skipped = 0;
+  
+  for (const action of actions) {
+    console.log(`\n📝 ${action.description}`);
+    console.log(`   File: ${action.filePath}`);
+    
+    if (strategy === 'review') {
+      console.log('\n--- Before ---');
+      console.log(action.oldContent);
+      console.log('\n--- After ---');
+      console.log(action.newContent);
+      console.log('---');
+      
+      const apply = await askYesNo('Apply this change?');
+      if (!apply) {
+        console.log('⏭️  Skipped');
+        skipped++;
+        continue;
+      }
+    }
+    
+    if (!config.dryRun) {
+      fs.writeFileSync(action.filePath, action.newContent, 'utf-8');
+      console.log('✅ Applied');
+      applied++;
+    } else {
+      console.log('✅ Would apply (dry-run mode)');
+      applied++;
+    }
+  }
+
+  // Step 5: Summary
+  console.log('\n📋 Step 5: Summary');
+  console.log(`\nMigration completed:`);
+  console.log(`   • Fixes applied: ${applied}`);
+  console.log(`   • Fixes skipped: ${skipped}`);
+  console.log(`   • Dry run: ${config.dryRun ? 'Yes' : 'No'}`);
+  
+  if (config.dryRun) {
+    console.log('\n💡 To apply these changes, run with --apply flag');
+  }
+  
+  console.log('\n🎉 Guided migration complete!');
+  return 0;
 }
 
 export async function runCli(argv: string[] = process.argv): Promise<number> {
@@ -129,6 +347,12 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
 
   const mergedConfig = { ...fileConfig, ...args };
   const config = validateConfig(mergedConfig);
+  
+  if (config.guided) {
+    return await runGuidedMigration(config);
+  }
+
+  // Original non-guided flow
   const dataDir = config.dataDir;
 
   try {
@@ -162,8 +386,7 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
         console.log(`Generated ${actions.length} codemod actions.`);
 
         for (const action of actions) {
-          console.log(`
---- Diff for ${action.filePath} (${action.description}) ---`);
+          console.log(`\n--- Diff for ${action.filePath} (${action.description}) ---`);
           console.log(action.oldContent);
           console.log('--------------------------------------------------');
           console.log(action.newContent);
@@ -191,18 +414,15 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
     return 0;
   } catch (err) {
     if (err instanceof MigrationError) {
-      console.error(`
-Migration failed: ${err.message}`);
+      console.error(`\nMigration failed: ${err.message}`);
       if (err.cause) {
         console.error(`Caused by: ${err.cause instanceof Error ? err.cause.message : String(err.cause)}`);
       }
     } else if (err instanceof Error) {
-      console.error(`
-An unexpected error occurred: ${err.message}`);
+      console.error(`\nAn unexpected error occurred: ${err.message}`);
       console.error(err.stack);
     } else {
-      console.error(`
-An unknown error occurred: ${String(err)}`);
+      console.error(`\nAn unknown error occurred: ${String(err)}`);
     }
     return 1;
   }
