@@ -32,6 +32,9 @@ export { getDefaultDataDir, createIssue, MigrationError } from "./types";
 
 export { handleInit } from './init';
 
+export { runGuidedMigration, MigrationWizard } from './wizard';
+export { askYesNo, askMultipleChoice, askText } from './prompts';
+
 export type {
   Config,
   LogLevel,
