@@ -1,46 +1,57 @@
-import { describe, it, expect, mock, afterEach } from 'bun:test';
+import { describe, it, expect, mock, afterEach, beforeEach } from 'bun:test';
 import { handleInit } from '../src/init';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline';
+import * as os from 'os';
 import { getDefaultDataDir } from '../src/types';
 
-const mockReadline = (inputs: string[]) => {
-  let index = 0;
-  const originalCreateInterface = readline.createInterface;
-  const originalConsoleLog = console.log;
-  const originalConsoleWarn = console.warn;
+// Mock the prompts module
+const mockAskYesNo = mock();
+const mockAskText = mock();
+const mockAskMultipleChoice = mock();
 
-  console.log = mock(() => {});
-  console.warn = mock(() => {});
-  
-  readline.createInterface = () => ({
-    question: (prompt: string, callback: (answer: string) => void) => {
-      callback(inputs[index++]);
-    },
-    close: () => {},
-  }) as unknown as readline.Interface;
-
-  return () => {
-    readline.createInterface = originalCreateInterface;
-    console.log = originalConsoleLog;
-    console.warn = originalConsoleWarn;
-  };
-};
+mock.module('../src/prompts', () => ({
+  askYesNo: mockAskYesNo,
+  askText: mockAskText,
+  askMultipleChoice: mockAskMultipleChoice,
+}));
 
 describe('Interactive CLI Config Generation', () => {
+  const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-migrate-init-test-'));
+  const originalCwd = process.cwd();
   const configFileName = 'ts-migrate.json';
-  const configPath = path.join(process.cwd(), configFileName);
+  let configPath: string;
+
+  beforeEach(() => {
+    process.chdir(testDir);
+    configPath = path.join(testDir, configFileName);
+    mockAskYesNo.mockClear();
+    mockAskText.mockClear();
+    mockAskMultipleChoice.mockClear();
+  });
 
   afterEach(() => {
+    process.chdir(originalCwd);
     if (fs.existsSync(configPath)) fs.unlinkSync(configPath);
+    fs.rmSync(testDir, { recursive: true, force: true });
   });
 
   it('should create config with defaults on empty inputs', async () => {
-    const restore = mockReadline(['', '', '', '', '', 'yes']);
+    mockAskMultipleChoice
+      .mockResolvedValueOnce('6.0') // Target version
+      .mockResolvedValueOnce('info'); // Log level
     
+    mockAskText
+      .mockResolvedValueOnce('') // Data directory
+      .mockResolvedValueOnce(''); // Files
+    
+    mockAskYesNo
+      .mockResolvedValueOnce(true) // Dry run
+      .mockResolvedValueOnce(false) // Interactive
+      .mockResolvedValueOnce(true); // Confirm save
+
     await handleInit();
-    
+
     expect(fs.existsSync(configPath)).toBeTrue();
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     expect(config).toEqual({
@@ -48,56 +59,117 @@ describe('Interactive CLI Config Generation', () => {
       dataDir: getDefaultDataDir(),
       dryRun: true,
       logLevel: 'info',
+      interactive: false,
     });
-    restore();
   });
 
-  it('should handle partial inputs with invalid values', async () => {
-    const restore = mockReadline(['invalid', '/bad/path', 'maybe', 'verbose', '*.ts', 'yes']);
+  it('should handle custom valid inputs', async () => {
+    mockAskMultipleChoice
+      .mockResolvedValueOnce('7.0') // Target version
+      .mockResolvedValueOnce('debug'); // Log level
     
+    mockAskText
+      .mockResolvedValueOnce('/custom/data') // Data directory
+      .mockResolvedValueOnce('src/**/*.ts, tests/**/*.ts'); // Files
+    
+    mockAskYesNo
+      .mockResolvedValueOnce(false) // Dry run
+      .mockResolvedValueOnce(true) // Interactive
+      .mockResolvedValueOnce(true); // Confirm save
+
     await handleInit();
-    
+
+    expect(fs.existsSync(configPath)).toBeTrue();
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    expect(config.targetTsVersion).toBe('6.0');
-    expect(config.dataDir).toBe(getDefaultDataDir());
-    expect(config.dryRun).toBe(true);
-    expect(config.logLevel).toBe('info');
-    expect(config.files).toEqual(['*.ts']);
-    restore();
+    expect(config).toEqual({
+      targetTsVersion: '7.0',
+      dataDir: '/custom/data',
+      dryRun: false,
+      logLevel: 'debug',
+      files: ['src/**/*.ts', 'tests/**/*.ts'],
+      interactive: true,
+    });
   });
 
-  it('should handle complex file glob patterns', async () => {
-    const restore = mockReadline(['7.0', '', 'no', 'debug', 'src/**/*.ts, test/, .github/**/*.yml', 'yes']);
+  it('should handle multiple choice selection by number', async () => {
+    mockAskMultipleChoice
+      .mockResolvedValueOnce('5.4') // Target version (selected by number)
+      .mockResolvedValueOnce('warn'); // Log level
     
+    mockAskText
+      .mockResolvedValueOnce('')
+      .mockResolvedValueOnce('');
+    
+    mockAskYesNo
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
     await handleInit();
-    
+
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    expect(config.files).toEqual([
-      'src/**/*.ts',
-      'test/',
-      '.github/**/*.yml'
-    ]);
-    expect(config.targetTsVersion).toBe('7.0');
-    expect(config.dryRun).toBe(false);
-    restore();
+    expect(config.targetTsVersion).toBe('5.4');
+    expect(config.logLevel).toBe('warn');
   });
 
   it('should cancel configuration when user rejects summary', async () => {
-    const restore = mockReadline(['6.0', '', 'yes', 'info', '', 'no']);
+    mockAskMultipleChoice
+      .mockResolvedValueOnce('6.0')
+      .mockResolvedValueOnce('info');
     
+    mockAskText
+      .mockResolvedValueOnce('')
+      .mockResolvedValueOnce('');
+    
+    mockAskYesNo
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false); // Reject save
+
     await handleInit();
-    
+
     expect(fs.existsSync(configPath)).toBeFalse();
-    restore();
   });
 
   it('should handle special path characters in data directory', async () => {
-    const restore = mockReadline(['5.5', '~/custom-data-dir', '', '', '', 'yes']);
+    const customDataPath = path.join(os.homedir(), 'custom-ts-data');
     
+    mockAskMultipleChoice
+      .mockResolvedValueOnce('5.5')
+      .mockResolvedValueOnce('info');
+    
+    mockAskText
+      .mockResolvedValueOnce(customDataPath)
+      .mockResolvedValueOnce('');
+    
+    mockAskYesNo
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
     await handleInit();
-    
+
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    expect(config.dataDir).toMatch(/custom-data-dir$/);
-    restore();
+    expect(config.dataDir).toBe(customDataPath);
+  });
+
+  it('should handle no files specified (undefined files property)', async () => {
+    mockAskMultipleChoice
+      .mockResolvedValueOnce('6.0')
+      .mockResolvedValueOnce('info');
+    
+    mockAskText
+      .mockResolvedValueOnce('')
+      .mockResolvedValueOnce(''); // No files input
+    
+    mockAskYesNo
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
+    await handleInit();
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    expect(config.files).toBeUndefined();
   });
 });

@@ -17,29 +17,96 @@ bash
 ts-migrate-2026 --dry-run
 
 
-## 🛠️ Create Configuration
+## 🛠️ Interactive Configuration
 
-Generate a configuration file interactively:
+Generate a configuration file interactively with step-by-step guidance:
 
 bash
 ts-migrate-2026 init
 
 
-This guides you through setting up your migration preferences and creates a `ts-migrate.json` file.
+This wizard will guide you through:
+- **Target TypeScript version** (5.0-7.0)
+- **Storage directory** for logs and reports
+- **Safe mode** (dry run) vs apply changes
+- **Log verbosity level**
+- **File selection** (specific files or entire project)
+- **Interactive mode** (prompt for each change)
 
-## 📖 API
+The configuration is saved as `ts-migrate.json` in your current directory.
 
-### CLI Functions
-- **`parseArgs(argv: string[]): Partial<Config>`** – Parse command-line arguments
-- **`validateConfig(config: Partial<Config>): Config`** – Validate and normalize config
-- **`printHelp()`** – Print help text
-- **`runCli(argv?: string[]): Promise<number>`** – Run the CLI (returns exit code)
+## 📖 Usage
 
-### Core Migrator
+### Basic Commands
 
-import { Migrator } from "ts-migrate-2026";
+bash
+# Create configuration interactively
+ts-migrate-2026 init
 
-const migrator = new Migrator({
-  dataDir: "./.ts-migrate-data", // Optional: custom data directory
-  dryRun: true, // Optional: set to false to apply changes
-  logLevel
+# Preview changes without modifying files
+ts-migrate-2026 --dry-run
+
+# Apply changes directly
+ts-migrate-2026 --apply
+
+# Run interactive migration wizard
+ts-migrate-2026 --guided
+
+# Target specific TypeScript version
+ts-migrate-2026 --target 7.0 --dry-run
+
+# Process specific files only
+ts-migrate-2026 --dry-run --files "src/**/*.ts,lib/**/*.ts"
+
+
+### Configuration File
+
+After running `init`, you'll get a `ts-migrate.json` file:
+
+
+{
+  "targetTsVersion": "6.0",
+  "dataDir": "/Users/you/.ts-migrate-2026",
+  "dryRun": true,
+  "logLevel": "info",
+  "interactive": false,
+  "files": ["src/**/*.ts"]
+}
+
+
+Use the config file:
+bash
+ts-migrate-2026 --config ts-migrate.json
+
+
+## 🧪 Testing
+
+Run the test suite:
+
+bash
+# Run all tests
+bun test
+
+# Run tests in watch mode
+bun test --watch
+
+# Run specific test file
+bun test tests/init.test.ts
+
+
+## 🔧 Development
+
+bash
+# Clone and install
+bun install
+
+# Build the project
+bun run build
+
+# Run in development mode
+bun run dev
+
+
+## 📄 License
+
+MIT © 2024

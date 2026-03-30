@@ -1,17 +1,22 @@
 import type { Config, LogLevel, TargetTsVersion } from './types';
 import { getDefaultDataDir } from './types';
 import { runGuidedMigration } from './wizard';
-import { askYesNo, askMultipleChoice } from './prompts';
+import { handleInit } from './init';
 
 /**
  * Parses command line arguments into a config object.
  * @param argv - Process arguments array
  * @returns Partial config object with parsed values
  */
-export function parseArgs(argv: string[]): Partial<Config> & { help?: boolean } {
+export function parseArgs(argv: string[]): Partial<Config> & { help?: boolean; command?: string } {
   const args = argv.slice(2);
-  const config: Partial<Config> & { help?: boolean } = {};
+  const config: Partial<Config> & { help?: boolean; command?: string } = {};
   
+  if (args.length > 0 && !args[0].startsWith('--')) {
+    config.command = args[0];
+    args.shift(); // Remove command from args
+  }
+
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     
@@ -73,7 +78,10 @@ export function printHelp(): void {
   console.log(`
 ts-migrate-2026: Painless TypeScript 6.0/7.0 Upgrades
 
-Usage: ts-migrate-2026 [options]
+Usage: ts-migrate-2026 [command] [options]
+
+Commands:
+  init              Create configuration file interactively
 
 Options:
   --apply           Apply changes (default: dry-run)
@@ -84,9 +92,6 @@ Options:
   --interactive     Prompt for each change
   --guided          Run interactive migration wizard
   --help, -h        Show this help message
-
-Commands:
-  init              Create configuration file interactively
 `);
 }
 
@@ -102,6 +107,11 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
     printHelp();
     return 0;
   }
+
+  if (parsed.command === 'init') {
+    await handleInit();
+    return 0;
+  }
   
   const config = validateConfig(parsed);
   
@@ -110,7 +120,6 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
   }
   
   console.log('Use --guided flag for interactive wizard mode, or --apply to run migration directly');
+  console.log('Use `ts-migrate-2026 init` to create a configuration file interactively.');
   return 0;
 }
-
-export { askYesNo, askMultipleChoice };

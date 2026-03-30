@@ -70,18 +70,28 @@ export async function askMultipleChoice(
       rl.close();
       const input = answer.trim().toLowerCase();
       
+      // Try to parse as number
       const num = parseInt(input, 10);
       if (!isNaN(num) && num > 0 && num <= choices.length) {
         resolve(choices[num - 1].value);
         return;
       }
       
+      // Try to match by value (case-insensitive)
       const match = choices.find(c => c.value.toLowerCase() === input);
       if (match) {
         resolve(match.value);
         return;
       }
       
+      // Try to match by label (case-insensitive)
+      const labelMatch = choices.find(c => c.label.toLowerCase().includes(input));
+      if (labelMatch) {
+        resolve(labelMatch.value);
+        return;
+      }
+      
+      // Fall back to default
       resolve(defaultValue);
     });
   });
